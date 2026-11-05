@@ -50,22 +50,7 @@ export default function Hero({ onOpenDemo }: HeroProps) {
       {/* ============================================================== */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-8">
         <div className="max-w-4xl text-left space-y-6">
-          {/* Eyebrow Pill matching Kotton Bridge */}
-          <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-cyan-300 text-xs sm:text-sm font-semibold tracking-wide shadow-inner">
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-400"></span>
-            </span>
-            <span className="uppercase text-[11px] tracking-wider text-slate-200">
-              24/7 Dental AI Receptionist
-            </span>
-            <span className="text-white/30">•</span>
-            <span className="text-cyan-200">0-Ring Pickup</span>
-            <span className="text-white/30 hidden sm:inline">•</span>
-            <span className="hidden sm:inline-flex items-center gap-1 text-emerald-400 font-medium">
-              <ShieldCheck className="w-3.5 h-3.5" /> HIPAA Certified
-            </span>
-          </div>
+    
 
           {/* Kotton Bridge Style Headline with Cormorant Garamond Serif Italic Accents */}
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.04]">
