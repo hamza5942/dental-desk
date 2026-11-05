@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
   // Accessing req or searchParams marks the route dynamic under cacheComponents
-  const _ = req.nextUrl.searchParams;
+  void req.nextUrl.searchParams;
 
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID || process.env.ELEVENLABS_AGENT_ID;

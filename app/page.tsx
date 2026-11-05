@@ -10,7 +10,7 @@ import Integrations from "@/components/Integrations/Integrations";
 import Pricing from "@/components/Pricing/Pricing";
 import Footer from "@/components/Footer/Footer";
 import DemoModal from "@/components/DemoModal/DemoModal";
-import { Sparkles, CalendarCheck, ShieldCheck, ArrowRight } from "lucide-react";
+import { CalendarCheck, ShieldCheck, ArrowRight } from "lucide-react";
 
 export default function Home() {
   const [demoModalOpen, setDemoModalOpen] = useState(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calculator, TrendingUp, Calendar, ArrowRight, ShieldCheck } from "lucide-react";
+import { TrendingUp, Calendar, ArrowRight, ShieldCheck } from "lucide-react";
 
 interface RoiCalculatorProps {
   onOpenDemo: () => void;

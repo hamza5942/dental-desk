@@ -90,3 +90,17 @@ h1, h2, h3 {
 .chat-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #00B4D8;
 }
+
+@keyframes audioWave {
+  0%, 100% {
+    transform: scaleY(0.2);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-audio-wave {
+  animation: audioWave 1.1s ease-in-out infinite;
+  transform-origin: bottom;
+}

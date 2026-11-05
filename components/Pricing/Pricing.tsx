@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Sparkles, ShieldCheck, ArrowRight, Zap } from "lucide-react";
+import { Check, Sparkles, ShieldCheck, ArrowRight } from "lucide-react";
 
 interface PricingProps {
   onOpenDemo: () => void;

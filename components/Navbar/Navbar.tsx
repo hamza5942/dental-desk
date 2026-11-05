@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Logo from "./Logo";
-import { Calendar, Menu, X, Sparkles, ArrowRight, ChevronRight } from "lucide-react";
+import { Calendar, Menu, X, ArrowRight, ChevronRight } from "lucide-react";
 
 interface NavbarProps {
   onOpenDemo: () => void;

@@ -1,6 +1,6 @@
 "use client";
 
-import { PhoneCall, CalendarCheck, Languages, FileCheck2, ArrowRight } from "lucide-react";
+import { PhoneCall, CalendarCheck, Languages, FileCheck2 } from "lucide-react";
 
 export default function Features() {
   const features = [

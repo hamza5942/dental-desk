@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Star, Quote, CheckCircle2, TrendingUp, Sparkles, Building2 } from "lucide-react";
+import { Star, Quote, CheckCircle2, Sparkles } from "lucide-react";
 
 export default function Testimonials() {
   const reviews = [

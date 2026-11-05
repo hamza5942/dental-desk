@@ -10,7 +10,6 @@ import {
   Volume2,
   VolumeX,
   Mic,
-  Calendar,
   CheckCircle,
   Clock,
   ShieldCheck,
@@ -22,10 +21,10 @@ import {
   MessageSquare,
   X,
   PhoneForwarded,
-  Info,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { useConversation, ConversationProvider } from "@elevenlabs/react";
+import { TextConversation } from "@elevenlabs/client";
 
 interface Message {
   id: string;
@@ -43,25 +42,54 @@ interface Message {
   };
 }
 
+let messageSeq = 0;
+function createMessage(
+  sender: "user" | "ai" | "system",
+  text: string,
+  type: "text" | "booking-confirmation" = "text",
+  bookingData?: Message["bookingData"]
+): Message {
+  messageSeq += 1;
+  const now = new Date();
+  return {
+    id: `msg-${messageSeq}-${now.getTime()}`,
+    sender,
+    text,
+    timestamp: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    type,
+    bookingData,
+  };
+}
+
+function generatePmsId(): string {
+  messageSeq += 1;
+  return `PMS-${100000 + (messageSeq % 900000)}`;
+}
+
+const VISUALIZER_HEIGHTS = [24, 38, 52, 30, 60, 44, 26, 56, 40, 28, 50, 22, 48, 32, 42, 20];
+
 function ReceptionistSimulatorInner() {
   const [activeTab, setActiveTab] = useState<"chat" | "voice">("chat");
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  
+
   // Simulated voice state
   const [simulatedCallActive, setSimulatedCallActive] = useState(false);
   const [voiceCallDuration, setVoiceCallDuration] = useState(0);
   const [isVoiceMuted, setIsVoiceMuted] = useState(false);
   const [isSimulatedSpeaking, setIsSimulatedSpeaking] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState<"en" | "es">("en");
-  
-  // ElevenLabs Live Conversational Agent State
-  const [elevenLabsAgentId, setElevenLabsAgentId] = useState<string>(
+
+  // DentalDesk Live Conversational Agent State
+  const [dentalAgentId, setDentalAgentId] = useState<string>(
     process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID || ""
   );
-  const [elevenLabsActive, setElevenLabsActive] = useState(false);
-  const [elevenLabsError, setElevenLabsError] = useState<string | null>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [showTelephonyGuide, setShowTelephonyGuide] = useState(false);
+
+  // Live AI Chat State
+  const [chatConnected, setChatConnected] = useState(false);
+  const textConvRef = useRef<TextConversation | null>(null);
 
   // Appointment Flow State
   const [bookingStep, setBookingStep] = useState<"idle" | "service" | "slot" | "details" | "confirmed">("idle");
@@ -71,7 +99,6 @@ function ReceptionistSimulatorInner() {
   const [patientPhone, setPatientPhone] = useState("");
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync configured agent ID from backend if not bundled into client
   useEffect(() => {
@@ -79,62 +106,62 @@ function ReceptionistSimulatorInner() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.agentId) {
-          setElevenLabsAgentId(data.agentId);
+          setDentalAgentId(data.agentId);
         }
       })
       .catch(() => {});
   }, []);
 
-  // ElevenLabs SDK Hook
+  // Voice SDK Hook
   const conversation = useConversation({
     onConnect: () => {
-      setElevenLabsActive(true);
-      setElevenLabsError(null);
+      setVoiceActive(true);
+      setVoiceError(null);
     },
     onDisconnect: () => {
-      setElevenLabsActive(false);
+      setVoiceActive(false);
+      setVoiceCallDuration(0);
     },
-    onError: (err: any) => {
-      const errMsg = typeof err === "string" ? err : err?.message ? String(err.message) : "Connection error";
-      setElevenLabsError(errMsg);
-      setElevenLabsActive(false);
+    onError: (err: unknown) => {
+      const errMsg =
+        typeof err === "string"
+          ? err
+          : (err as { message?: string })?.message
+          ? String((err as { message?: string }).message)
+          : "Connection error";
+      setVoiceError(errMsg);
+      setVoiceActive(false);
     },
   });
 
-  const isAnyCallActive = elevenLabsActive || simulatedCallActive;
-  const isSpeaking = elevenLabsActive ? conversation.isSpeaking : isSimulatedSpeaking;
+  const isAnyCallActive = voiceActive || simulatedCallActive;
+  const isSpeaking = voiceActive ? conversation.isSpeaking : isSimulatedSpeaking;
 
   // Call duration timer
   useEffect(() => {
-    if (isAnyCallActive) {
-      timerRef.current = setInterval(() => {
-        setVoiceCallDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setVoiceCallDuration(0);
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-      setIsSimulatedSpeaking(false);
-    }
+    if (!isAnyCallActive) return;
+
+    const interval = setInterval(() => {
+      setVoiceCallDuration((prev) => prev + 1);
+    }, 1000);
+
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      clearInterval(interval);
     };
   }, [isAnyCallActive]);
 
   const initialMessages: Message[] = [
     {
-      id: "1",
+      id: "init-1",
       sender: "system",
       text: "⚡ DentalDesk Engine Online • 2-Way Calendar Sync Connected (Eaglesoft / Open Dental)",
       timestamp: "Just now",
       type: "text",
     },
     {
-      id: "2",
+      id: "init-2",
       sender: "ai",
-      text: "Hello! Thank you for calling Dr. Miller's Family Dentistry. I'm Sarah, your AI dental receptionist powered by ElevenLabs. How may I help you today?",
+      text: "Hello! Thank you for contacting Dr. Miller's Family Dentistry. I'm Sarah, your DentalDesk AI receptionist. How may I assist you today?",
       timestamp: "10:24 AM",
       type: "text",
     },
@@ -155,14 +182,14 @@ function ReceptionistSimulatorInner() {
     return `${mins.toString().padStart(2, "0")}:${remainingSecs.toString().padStart(2, "0")}`;
   };
 
-  const speakText = (text: string, lang: "en" | "es" = "en") => {
+  const speakText = useCallback((text: string) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
       utterance.pitch = 1.05;
-      utterance.lang = lang === "es" ? "es-ES" : "en-US";
+      utterance.lang = "en-US";
 
       utterance.onstart = () => setIsSimulatedSpeaking(true);
       utterance.onend = () => setIsSimulatedSpeaking(false);
@@ -172,14 +199,30 @@ function ReceptionistSimulatorInner() {
     } catch {
       setIsSimulatedSpeaking(false);
     }
-  };
+  }, []);
 
-  // Start Real ElevenLabs Conversational Voice Call
-  const startElevenLabsCall = useCallback(async () => {
+  const startSimulatedCall = useCallback((scenario: "emergency" | "insurance" | "reschedule") => {
+    setSimulatedCallActive(true);
+    let speech = "";
+    if (scenario === "emergency") {
+      speech =
+        "Thank you for calling Dr. Miller's Dentistry. I understand you have sudden tooth pain. We have an emergency triage opening with Dr. Miller at 2:15 PM today. Would you like me to hold this opening for you?";
+    } else if (scenario === "insurance") {
+      speech =
+        "Hello! Yes, our clinic accepts Delta Dental, Cigna, MetLife, and all major PPOs. Routine preventive cleanings and exams are covered at 100%. Would you like to schedule an appointment?";
+    } else {
+      speech =
+        "Good afternoon! I can easily reschedule your checkup to Friday at 11:00 AM with zero penalty. Shall I update that in your chart right now?";
+    }
+    speakText(speech);
+  }, [speakText]);
+
+  // Start Real Conversational Voice Call
+  const startVoiceCall = useCallback(async () => {
     try {
-      setElevenLabsError(null);
+      setVoiceError(null);
 
-      // Check backend signed-url route first
+      // Check backend signed-url / config route first
       const res = await fetch("/api/elevenlabs/signed-url");
       const data = await res.json();
 
@@ -188,58 +231,37 @@ function ReceptionistSimulatorInner() {
         return;
       }
 
-      // Connect directly with the configured public Agent ID from .env.local
-      const targetAgentId =
+      const activeAgentId =
         data?.agentId ||
-        elevenLabsAgentId ||
+        dentalAgentId ||
         process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
 
-      if (targetAgentId) {
-        await conversation.startSession({ agentId: targetAgentId });
+      if (activeAgentId) {
+        await conversation.startSession({ agentId: activeAgentId });
         return;
       }
 
-      throw new Error("ElevenLabs Agent ID is not configured in .env.local");
+      throw new Error("DentalDesk Voice Agent ID is not configured in .env.local");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to connect to ElevenLabs";
-      setElevenLabsError(msg);
-      // Fallback to simulated voice if permission or connection fails
+      const msg = err instanceof Error ? err.message : "Failed to connect to DentalDesk voice engine";
+      setVoiceError(msg);
       startSimulatedCall("emergency");
     }
-  }, [conversation, elevenLabsAgentId]);
+  }, [conversation, dentalAgentId, startSimulatedCall]);
 
-  const endElevenLabsCall = useCallback(async () => {
+  const endVoiceCall = useCallback(async () => {
     try {
       await conversation.endSession();
     } catch {
       // Ignored
     }
-    setElevenLabsActive(false);
+    setVoiceActive(false);
+    setVoiceCallDuration(0);
   }, [conversation]);
-
-  const startSimulatedCall = (scenario: "emergency" | "insurance" | "reschedule") => {
-    setSimulatedCallActive(true);
-    let speech = "";
-    if (selectedLanguage === "es") {
-      speech =
-        "Hola, gracias por llamar a DentalDesk. Soy Sarah, su recepcionista dental con inteligencia artificial. ¿En qué podemos ayudarle hoy?";
-    } else {
-      if (scenario === "emergency") {
-        speech =
-          "Thank you for calling DentalDesk. I understand you have sudden tooth pain. We have an emergency triage opening with Dr. Miller at 2:15 PM today. Would you like me to hold this opening for you?";
-      } else if (scenario === "insurance") {
-        speech =
-          "Hello! Yes, our clinic accepts Delta Dental, Cigna, and all major PPOs. Preventive cleanings and checkups are covered at 100%. Would you like to schedule an appointment?";
-      } else {
-        speech =
-          "Good afternoon! I can easily reschedule your checkup to Friday at 11:00 AM with zero penalty. Shall I update that in your chart right now?";
-      }
-    }
-    speakText(speech, selectedLanguage);
-  };
 
   const endSimulatedCall = () => {
     setSimulatedCallActive(false);
+    setVoiceCallDuration(0);
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -247,68 +269,157 @@ function ReceptionistSimulatorInner() {
   };
 
   const endAnyCall = () => {
-    if (elevenLabsActive) {
-      endElevenLabsCall();
+    if (voiceActive) {
+      endVoiceCall();
     }
     if (simulatedCallActive) {
       endSimulatedCall();
     }
   };
 
-  const handleSendPrompt = (promptText: string) => {
-    if (isTyping) return;
+  // Connect to the real AI chat assistant session
+  const initTextSession = useCallback(async (agentId: string) => {
+    if (textConvRef.current) return textConvRef.current;
+    try {
+      const conv = await TextConversation.startSession({
+        agentId,
+        connectionType: "websocket",
+        onConnect: () => {
+          setChatConnected(true);
+        },
+        onDisconnect: () => {
+          setChatConnected(false);
+          textConvRef.current = null;
+        },
+        onError: () => {
+          setChatConnected(false);
+        },
+        onMessage: (payload) => {
+          if (payload.role === "agent" || payload.source === "ai") {
+            const raw = payload.message || "";
+            // Strip emotion/action tags like [happy], [thoughtful]
+            const clean = raw.replace(/\[\w+\]\s*/g, "").trim();
+            if (!clean) return;
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      sender: "user",
-      text: promptText,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            setMessages((prev) => [...prev, createMessage("ai", clean)]);
+            setIsTyping(false);
+
+            // If message suggests picking a time or service, guide user smoothly
+            const lower = clean.toLowerCase();
+            if (
+              lower.includes("which time") ||
+              lower.includes("openings available") ||
+              lower.includes("available time")
+            ) {
+              setBookingStep("slot");
+            } else if (
+              lower.includes("which dental service") ||
+              lower.includes("what service") ||
+              lower.includes("procedure")
+            ) {
+              setBookingStep("service");
+            }
+          }
+        },
+      });
+      textConvRef.current = conv;
+      return conv;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Pre-connect live AI text session when in chat tab
+  useEffect(() => {
+    if (activeTab === "chat" && dentalAgentId && !textConvRef.current) {
+      initTextSession(dentalAgentId);
+    }
+  }, [activeTab, dentalAgentId, initTextSession]);
+
+  // Clean up live AI text session on unmount
+  useEffect(() => {
+    return () => {
+      if (textConvRef.current) {
+        textConvRef.current.endSession().catch(() => {});
+        textConvRef.current = null;
+      }
     };
+  }, []);
 
-    setMessages((prev) => [...prev, userMsg]);
-    setIsTyping(true);
+  const handleSendPrompt = useCallback(
+    async (promptText: string) => {
+      if (isTyping || !promptText.trim()) return;
 
-    setTimeout(() => {
-      const lower = promptText.toLowerCase();
-      let responseText = "";
-      let stepTrigger: "idle" | "service" = "idle";
+      const userMsg = createMessage("user", promptText);
+      setMessages((prev) => [...prev, userMsg]);
+      setIsTyping(true);
 
-      if (lower.includes("after-hours") || lower.includes("after hours")) {
-        responseText =
-          "DentalDesk serves as your 24/7 safety net. When a patient calls at 11:30 PM with a toothache, DentalDesk answers in 1 ring, quotes your accepted insurances, and books them directly into your morning schedule. Your staff arrives to a full operatory!";
-      } else if (lower.includes("eaglesoft") || lower.includes("open dental") || lower.includes("dentrix") || lower.includes("integrate")) {
-        responseText =
-          "We offer direct 2-way sync with Dentrix, Eaglesoft, Open Dental, and NexHealth. DentalDesk checks chair availability in real-time, respects your block schedules, and prevents double-booking.";
-      } else if (lower.includes("test booking") || lower.includes("book an appointment") || lower.includes("appointment")) {
-        responseText =
-          "I would be glad to help schedule that for you right now! Which dental service do you need?";
-        stepTrigger = "service";
-      } else if (lower.includes("delta") || lower.includes("insurance") || lower.includes("ppo")) {
-        responseText =
-          "Yes! We accept Delta Dental, Cigna, MetLife, and all major PPOs. Preventive cleanings and checkup exams are typically covered at 100%. Would you like to schedule an appointment?";
-      } else if (lower.includes("emergency") || lower.includes("toothache") || lower.includes("pain")) {
-        responseText =
-          "DentalDesk's Emergency Triage identifies acute pain or broken teeth immediately. We hold designated emergency slots and dispatch an instant SMS alert to the on-call dentist.";
-      } else {
-        responseText =
-          "DentalDesk answers patient questions about procedures, insurance, office hours, and seamlessly reserves appointments straight into your PMS. Would you like to test booking a slot?";
+      // 1. Try sending to the real connected AI agent
+      let session = textConvRef.current;
+      if (!session && dentalAgentId) {
+        session = await initTextSession(dentalAgentId);
       }
 
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: "ai",
-        text: responseText,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-
-      setMessages((prev) => [...prev, aiMsg]);
-      setIsTyping(false);
-
-      if (stepTrigger === "service") {
-        setBookingStep("service");
+      if (session) {
+        try {
+          session.sendUserMessage(promptText);
+          return;
+        } catch {
+          // Fallback to local response generator if WebSocket drops
+        }
       }
-    }, 1000);
-  };
+
+      // 2. Intelligent Dental Receptionist response fallback
+      setTimeout(() => {
+        const lower = promptText.toLowerCase();
+        let responseText = "";
+        let stepTrigger: "idle" | "service" = "idle";
+
+        if (lower.includes("after-hours") || lower.includes("after hours")) {
+          responseText =
+            "DentalDesk serves as your 24/7 safety net. When a patient calls at 11:30 PM with a toothache, DentalDesk answers in 1 ring, quotes your accepted insurances, and books them directly into your morning schedule. Your staff arrives to a full operatory!";
+        } else if (
+          lower.includes("eaglesoft") ||
+          lower.includes("open dental") ||
+          lower.includes("dentrix") ||
+          lower.includes("integrate")
+        ) {
+          responseText =
+            "We offer direct 2-way sync with Dentrix, Eaglesoft, Open Dental, and NexHealth. DentalDesk checks chair availability in real-time, respects your block schedules, and prevents double-booking.";
+        } else if (
+          lower.includes("test booking") ||
+          lower.includes("book an appointment") ||
+          lower.includes("appointment")
+        ) {
+          responseText =
+            "I would be glad to help schedule that for you right now! Which dental service do you need?";
+          stepTrigger = "service";
+        } else if (lower.includes("delta") || lower.includes("insurance") || lower.includes("ppo")) {
+          responseText =
+            "Yes! We accept Delta Dental, Cigna, MetLife, and all major PPOs. Preventive cleanings and checkup exams are typically covered at 100%. Would you like to schedule an appointment?";
+        } else if (
+          lower.includes("emergency") ||
+          lower.includes("toothache") ||
+          lower.includes("pain")
+        ) {
+          responseText =
+            "DentalDesk's Emergency Triage identifies acute pain or broken teeth immediately. We hold designated emergency slots and dispatch an instant SMS alert to the on-call dentist.";
+        } else {
+          responseText =
+            "DentalDesk answers patient questions about procedures, insurance, office hours, and seamlessly reserves appointments straight into your PMS. Would you like to test booking a slot?";
+        }
+
+        const aiMsg = createMessage("ai", responseText);
+        setMessages((prev) => [...prev, aiMsg]);
+        setIsTyping(false);
+
+        if (stepTrigger === "service") {
+          setBookingStep("service");
+        }
+      }, 700);
+    },
+    [isTyping, dentalAgentId, initTextSession]
+  );
 
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,69 +433,47 @@ function ReceptionistSimulatorInner() {
     setBookingService(service);
     setBookingStep("slot");
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      sender: "user",
-      text: `Procedure: ${service}`,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-
+    const userMsg = createMessage("user", `Procedure: ${service}`);
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
     setTimeout(() => {
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: "ai",
-        text: `Checked calendar for ${service}. We have 3 openings available in Operatory #2. Which time works best for you?`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
+      const aiMsg = createMessage(
+        "ai",
+        `Checked calendar for ${service}. We have 3 openings available in Operatory #2. Which time works best for you?`
+      );
       setMessages((prev) => [...prev, aiMsg]);
       setIsTyping(false);
-    }, 700);
+    }, 600);
   };
 
   const handleSelectSlot = (slot: string) => {
     setBookingSlot(slot);
     setBookingStep("details");
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      sender: "user",
-      text: `Preferred slot: ${slot}`,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-
+    const userMsg = createMessage("user", `Preferred slot: ${slot}`);
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
     setTimeout(() => {
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: "ai",
-        text: `I've held ${slot} for you! Please provide your name and phone number to finalize your reservation:`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
+      const aiMsg = createMessage(
+        "ai",
+        `I've held ${slot} for you! Please provide your name and phone number to finalize your reservation:`
+      );
       setMessages((prev) => [...prev, aiMsg]);
       setIsTyping(false);
-    }, 700);
+    }, 600);
   };
 
   const handleFinalizeBooking = (e: React.FormEvent) => {
     e.preventDefault();
     const name = patientName || "Alex Morgan";
     const phone = patientPhone || "(512) 890-4421";
-    const pmsId = "PMS-" + Math.floor(100000 + Math.random() * 900000);
+    const pmsId = generatePmsId();
 
     setBookingStep("confirmed");
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      sender: "user",
-      text: `Patient: ${name}, Phone: ${phone}`,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-
+    const userMsg = createMessage("user", `Patient: ${name}, Phone: ${phone}`);
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
@@ -400,25 +489,25 @@ function ReceptionistSimulatorInner() {
         // Safe fallback
       }
 
-      const confirmMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: "ai",
-        text: `🎉 Appointment confirmed for ${bookingService || "Routine Cleaning & Exam"} at ${bookingSlot || "Tomorrow @ 10:00 AM"}! A calendar invitation and SMS reminder have been dispatched, and this slot is now synced into Eaglesoft/Open Dental.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        type: "booking-confirmation",
-        bookingData: {
+      const confirmMsg = createMessage(
+        "ai",
+        `🎉 Appointment confirmed for ${bookingService || "Routine Cleaning & Exam"} at ${
+          bookingSlot || "Tomorrow @ 10:00 AM"
+        }! A calendar invitation and SMS reminder have been dispatched, and this slot is now synced into Eaglesoft/Open Dental.`,
+        "booking-confirmation",
+        {
           service: bookingService || "Routine Cleaning & Exam",
           doctor: "Dr. Rachel Miller, DDS",
           time: bookingSlot || "Tomorrow @ 10:00 AM",
           patientName: name,
           phone: phone,
           pmsId: pmsId,
-        },
-      };
+        }
+      );
 
       setMessages((prev) => [...prev, confirmMsg]);
       setIsTyping(false);
-    }, 900);
+    }, 700);
   };
 
   const handleResetChat = () => {
@@ -433,11 +522,11 @@ function ReceptionistSimulatorInner() {
   return (
     <section id="live-demo" className="py-24 lg:py-32 relative scroll-mt-20 bg-[#fbfdff]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Heading matching Kotton Bridge */}
+        {/* Section Heading */}
         <div className="text-center max-w-3xl mx-auto mb-14 space-y-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-sky-50 text-sky-700 text-xs font-bold uppercase tracking-wider border border-sky-100">
             <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
-            ElevenLabs Conversational AI Integration
+            DentalDesk Voice & Chat Intelligence
           </div>
           <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-[1.12]">
             Experience conversational intelligence. <br className="hidden sm:inline" />
@@ -461,9 +550,9 @@ function ReceptionistSimulatorInner() {
               }`}
             >
               <Headphones className="w-4 h-4" />
-              <span>Live ElevenLabs Calling Agent</span>
+              <span>Voice AI Receptionist</span>
               <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded-full font-bold">
-                Voice AI
+                Live Voice
               </span>
             </button>
             <button
@@ -476,17 +565,20 @@ function ReceptionistSimulatorInner() {
               }`}
             >
               <MessageSquare className="w-4 h-4" />
-              <span>Interactive Chat & Booking</span>
+              <span>AI Chat Assistant & Booking</span>
+              {chatConnected && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="AI Online" />
+              )}
             </button>
           </div>
         </div>
 
         {/* ============================================================== */}
-        {/* MODE: ELEVENLABS CONVERSATIONAL VOICE AGENT CALLING SYSTEM     */}
+        {/* MODE: CONVERSATIONAL VOICE AGENT CALLING SYSTEM                */}
         {/* ============================================================== */}
         {activeTab === "voice" && (
           <div className="glass-panel rounded-3xl shadow-2xl p-6 sm:p-10 max-w-2xl mx-auto border border-sky-100 text-center relative overflow-hidden">
-            {/* Top Bar with Settings & Telephony Guide */}
+            {/* Top Bar with Telephony Guide */}
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-2">
                 <span className="flex h-2.5 w-2.5 relative">
@@ -502,7 +594,7 @@ function ReceptionistSimulatorInner() {
                   />
                 </span>
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  {elevenLabsActive ? "ElevenLabs WebRTC Live" : "ElevenLabs Voice Agent"}
+                  {voiceActive ? "DentalDesk Live Voice" : "DentalDesk Voice Receptionist"}
                 </span>
               </div>
 
@@ -536,9 +628,9 @@ function ReceptionistSimulatorInner() {
               </div>
               <h3 className="text-xl font-bold text-slate-900">Dr. Miller Family Dental Clinic</h3>
               <p className="text-xs gradient-dental-text font-bold mt-0.5">
-                Sarah • ElevenLabs AI Dental Receptionist
+                Sarah • DentalDesk AI Receptionist
               </p>
-              
+
               <div className="mt-3 inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-sky-50 border border-sky-200 text-xs text-sky-800 font-medium">
                 <span
                   className={`w-2 h-2 rounded-full ${
@@ -557,16 +649,15 @@ function ReceptionistSimulatorInner() {
             <div className="h-20 flex items-center justify-center gap-1.5 my-6 bg-slate-50 rounded-2xl border border-sky-100 px-6">
               {isAnyCallActive ? (
                 <>
-                  {[12, 28, 40, 24, 48, 36, 18, 50, 32, 20, 44, 16, 38, 22, 30, 14].map((height, i) => (
+                  {VISUALIZER_HEIGHTS.map((height, i) => (
                     <span
                       key={i}
-                      className={`w-1 rounded-full bg-gradient-to-t from-sky-500 to-cyan-400 transition-all duration-150 ${
-                        isSpeaking ? "opacity-100" : "opacity-40"
+                      className={`w-1 rounded-full bg-gradient-to-t from-sky-500 to-cyan-400 transition-all duration-200 ${
+                        isSpeaking ? "animate-audio-wave opacity-100" : "opacity-35"
                       }`}
                       style={{
-                        height: isSpeaking
-                          ? `${Math.max(8, Math.round(height * Math.random()))}px`
-                          : "8px",
+                        height: `${height}px`,
+                        animationDelay: `${(i % 6) * 0.12}s`,
                       }}
                     />
                   ))}
@@ -580,9 +671,9 @@ function ReceptionistSimulatorInner() {
             </div>
 
             {/* Status & Error Display */}
-            {elevenLabsError && (
+            {voiceError && (
               <div className="mb-4 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                Notice: {elevenLabsError}. Running in browser speech fallback mode.
+                Notice: {voiceError}. Running in browser speech fallback mode.
               </div>
             )}
 
@@ -614,9 +705,9 @@ function ReceptionistSimulatorInner() {
                 ) : (
                   <button
                     type="button"
-                    onClick={startElevenLabsCall}
+                    onClick={startVoiceCall}
                     className="w-18 h-18 rounded-full gradient-dental-btn text-white flex items-center justify-center shadow-xl hover:shadow-cyan-500/30 transition-all hover:scale-105 group"
-                    title="Call Sarah via ElevenLabs"
+                    title="Call Sarah • DentalDesk Voice"
                   >
                     <PhoneCall className="w-8 h-8 group-hover:rotate-12 transition-transform" />
                   </button>
@@ -688,9 +779,16 @@ function ReceptionistSimulatorInner() {
             <div className="lg:col-span-4 bg-white/60 p-5 lg:p-6 border-b lg:border-b-0 lg:border-r border-sky-100/80 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Quick Practice Tests
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Quick Practice Tests
+                    </span>
+                    {chatConnected && (
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        Live AI
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={handleResetChat}
@@ -751,154 +849,171 @@ function ReceptionistSimulatorInner() {
 
                   <button
                     type="button"
-                    onClick={() => handleSendPrompt("What if a patient has an emergency severe toothache?")}
+                    onClick={() => handleSendPrompt("I have a broken molar and intense pain.")}
                     className="w-full text-left p-3 rounded-xl bg-white/90 hover:bg-sky-50 border border-sky-100 text-xs sm:text-sm font-medium text-slate-800 transition-all flex items-center justify-between group shadow-2xs"
                   >
                     <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-sky-600" />
-                      &ldquo;Emergency severe toothache triage&rdquo;
+                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                      &ldquo;I have a broken molar and intense pain.&rdquo;
                     </span>
                     <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-sky-600 transition-transform group-hover:translate-x-0.5 shrink-0" />
                   </button>
                 </div>
               </div>
 
-              {/* Status Box */}
-              <div className="mt-6 pt-5 border-t border-sky-100 text-xs space-y-2 text-slate-600">
-                <div className="flex items-center justify-between">
-                  <span>PMS Target:</span>
-                  <span className="font-semibold text-slate-900">Eaglesoft / Open Dental</span>
+              {/* PMS Live Badge */}
+              <div className="mt-6 pt-5 border-t border-sky-100 text-xs text-slate-500 space-y-2">
+                <div className="flex items-center gap-2 text-slate-700 font-semibold">
+                  <ShieldCheck className="w-4 h-4 text-cyan-600" />
+                  <span>2-Way PMS Bridge Status</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span>AI Latency:</span>
-                  <span className="font-mono text-sky-600 font-bold">185 ms</span>
+                <div className="flex items-center justify-between text-[11px] bg-slate-50 p-2.5 rounded-xl border border-sky-100">
+                  <span className="text-slate-500">Connected Sandbox:</span>
+                  <span className="font-bold text-sky-700">Eaglesoft v21 API</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span>HIPAA Compliance:</span>
-                  <span className="text-sky-700 font-semibold flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5" /> AES-256 Validated
+                <div className="flex items-center justify-between text-[11px] bg-slate-50 p-2.5 rounded-xl border border-sky-100">
+                  <span className="text-slate-500">Assistant Response:</span>
+                  <span className="font-bold text-emerald-600">
+                    {chatConnected ? "Live AI Active" : "Intelligent Fallback"}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Right Chat Canvas */}
-            <div className="lg:col-span-8 flex flex-col justify-between bg-white/80 h-[560px] lg:h-[620px]">
+            {/* Right: Interactive Chat Console */}
+            <div className="lg:col-span-8 flex flex-col bg-white">
               {/* Chat Header */}
-              <div className="p-4 border-b border-sky-100 flex items-center justify-between bg-white/90 sticky top-0 z-10">
+              <div className="p-4 sm:p-5 border-b border-sky-100 flex items-center justify-between bg-white/90">
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <div className="w-9 h-9 rounded-full gradient-dental-btn flex items-center justify-center text-white font-bold shadow-sm">
-                      <Bot className="w-4 h-4" />
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-50 to-cyan-50 border border-sky-100 p-1.5 flex items-center justify-center">
+                      <Image
+                        src="/media/dentaldesk-icon.png"
+                        alt="DentalDesk"
+                        width={30}
+                        height={30}
+                        className="object-contain"
+                      />
                     </div>
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-cyan-400 border-2 border-white" />
+                    <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-bold text-slate-900">Sarah • AI Dental Receptionist</h4>
-                      <span className="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-semibold border border-sky-200">
-                        24/7 Active
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                      Sarah • DentalDesk AI Assistant
+                      <span className="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full font-bold">
+                        Online
                       </span>
-                    </div>
-                    <p className="text-xs text-slate-500">Dr. Miller Family Dental • Eaglesoft Connected</p>
+                    </h3>
+                    <p className="text-xs text-slate-500">Dr. Miller Family Dental Clinic</p>
                   </div>
                 </div>
 
-                <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500">
-                  <Clock className="w-3.5 h-3.5 text-sky-600" />
-                  <span>0 Ring Pickup</span>
+                <div className="text-xs text-slate-400 hidden sm:flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Real-Time PMS Booking</span>
                 </div>
               </div>
 
               {/* Message Feed */}
-              <div ref={chatContainerRef} className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 chat-scrollbar">
+              <div
+                ref={chatContainerRef}
+                className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 max-h-[460px] min-h-[380px] chat-scrollbar bg-slate-50/40"
+              >
                 {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex items-start gap-3 ${
-                      msg.sender === "user" ? "flex-row-reverse" : "flex-row"
-                    }`}
-                  >
-                    {msg.sender === "ai" && (
-                      <div className="w-7 h-7 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center shrink-0 text-xs font-bold mt-1">
-                        DD
+                  <div key={msg.id} className="space-y-1.5">
+                    {msg.sender === "system" && (
+                      <div className="text-center my-3">
+                        <span className="inline-block text-[11px] font-bold text-sky-700 bg-sky-50 px-3 py-1 rounded-full border border-sky-200">
+                          {msg.text}
+                        </span>
                       </div>
                     )}
+
                     {msg.sender === "user" && (
-                      <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center shrink-0 text-xs font-bold mt-1">
-                        <User className="w-3.5 h-3.5" />
+                      <div className="flex justify-end gap-2.5">
+                        <div className="max-w-md">
+                          <div className="gradient-dental-btn text-white text-xs sm:text-sm p-3.5 rounded-2xl rounded-tr-xs shadow-sm">
+                            {msg.text}
+                          </div>
+                          <div className="text-[10px] text-slate-400 text-right mt-1">
+                            {msg.timestamp}
+                          </div>
+                        </div>
+                        <div className="w-7 h-7 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 shrink-0 mt-1">
+                          <User className="w-4 h-4" />
+                        </div>
                       </div>
                     )}
 
-                    <div
-                      className={`max-w-[85%] sm:max-w-[78%] ${
-                        msg.sender === "system"
-                          ? "w-full text-center text-xs text-slate-500 bg-sky-50/60 py-1.5 px-3 rounded-lg mx-auto border border-sky-100"
-                          : msg.sender === "user"
-                          ? "bg-slate-900 text-white rounded-2xl rounded-tr-sm p-3.5 shadow-sm text-sm"
-                          : "bg-white text-slate-800 rounded-2xl rounded-tl-sm p-4 shadow-sm text-sm border border-sky-100"
-                      }`}
-                    >
-                      {msg.sender !== "system" && (
-                        <div className="flex items-center justify-between gap-3 text-[10px] text-slate-400 mb-1">
-                          <span className="font-semibold text-slate-600">
-                            {msg.sender === "ai" ? "DentalDesk AI" : "Practice Inquirer"}
-                          </span>
-                          <span>{msg.timestamp}</span>
+                    {msg.sender === "ai" && (
+                      <div className="flex justify-start gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-sky-500 to-cyan-500 flex items-center justify-center text-white shrink-0 mt-1 shadow-2xs">
+                          <Bot className="w-4 h-4" />
                         </div>
-                      )}
-
-                      <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-
-                      {/* Confirmation Card */}
-                      {msg.type === "booking-confirmation" && msg.bookingData && (
-                        <div className="mt-3.5 p-3.5 bg-sky-50/60 rounded-xl border border-sky-200 text-slate-900 space-y-2">
-                          <div className="flex items-center gap-2 text-sky-700 font-bold text-xs">
-                            <CheckCircle className="w-4 h-4 text-cyan-500" />
-                            PMS Reservation Dispatched
+                        <div className="max-w-md space-y-2">
+                          <div className="bg-white border border-sky-100 text-xs sm:text-sm text-slate-800 p-3.5 rounded-2xl rounded-tl-xs shadow-xs">
+                            {msg.text}
                           </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-sky-100">
-                            <div>
-                              <span className="text-slate-400 block text-[10px]">Procedure:</span>
-                              <span className="font-semibold">{msg.bookingData.service}</span>
+
+                          {/* Booking Confirmation Card */}
+                          {msg.type === "booking-confirmation" && msg.bookingData && (
+                            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 text-xs space-y-2 shadow-sm">
+                              <div className="flex items-center justify-between font-bold text-emerald-900 border-b border-emerald-200 pb-2">
+                                <span className="flex items-center gap-1.5">
+                                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                  Appointment Reserved in Eaglesoft
+                                </span>
+                                <span className="text-[10px] bg-emerald-200/60 px-2 py-0.5 rounded-full text-emerald-800 font-mono">
+                                  {msg.bookingData.pmsId}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-slate-700 pt-1">
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Service:</span>
+                                  <span className="font-semibold text-slate-900">{msg.bookingData.service}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Provider:</span>
+                                  <span className="font-semibold text-slate-900">{msg.bookingData.doctor}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Date & Time:</span>
+                                  <span className="font-semibold text-sky-700">{msg.bookingData.time}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Patient:</span>
+                                  <span className="font-semibold text-slate-900">{msg.bookingData.patientName}</span>
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-slate-400 block text-[10px]">Slot:</span>
-                              <span className="font-semibold text-sky-700">{msg.bookingData.time}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[10px]">Patient:</span>
-                              <span className="font-medium">{msg.bookingData.patientName}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[10px]">Eaglesoft Sync ID:</span>
-                              <span className="font-mono text-[11px] font-bold text-slate-600">
-                                {msg.bookingData.pmsId}
-                              </span>
-                            </div>
+                          )}
+
+                          <div className="text-[10px] text-slate-400 mt-1">
+                            Sarah • {msg.timestamp}
                           </div>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 ))}
 
-                {/* Step: Service Selection */}
+                {/* Interactive Booking Option Step: Procedure */}
                 {bookingStep === "service" && (
-                  <div className="ml-10 bg-white p-3.5 rounded-2xl border border-sky-200 shadow-sm max-w-md animate-fade-in space-y-2">
-                    <p className="text-xs font-bold text-slate-700">Select dental service:</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="p-3 bg-sky-50/70 border border-sky-100 rounded-2xl space-y-2 my-2 animate-fade-in">
+                    <p className="text-xs font-bold text-sky-900">
+                      Select a common dental procedure to inspect live chair openings:
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {[
                         "Routine Cleaning & Exam",
-                        "Emergency Toothache Exam",
-                        "Crown / Implant Consult",
-                        "Teeth Whitening",
+                        "Emergency Toothache Triage",
+                        "Invisalign / Ortho Consultation",
                       ].map((item) => (
                         <button
                           key={item}
                           type="button"
                           onClick={() => handleSelectService(item)}
-                          className="text-left text-xs p-2.5 rounded-lg border border-sky-100 hover:border-sky-400 hover:bg-sky-50 font-medium text-slate-700 transition-colors"
+                          className="p-2 rounded-xl bg-white hover:bg-sky-100 border border-sky-200 text-xs font-semibold text-slate-800 transition-all text-left"
                         >
                           {item}
                         </button>
@@ -907,36 +1022,50 @@ function ReceptionistSimulatorInner() {
                   </div>
                 )}
 
-                {/* Step: Slot Selection */}
+                {/* Interactive Booking Option Step: Slot */}
                 {bookingStep === "slot" && (
-                  <div className="ml-10 bg-white p-3.5 rounded-2xl border border-sky-200 shadow-sm max-w-md animate-fade-in space-y-2">
-                    <p className="text-xs font-bold text-slate-700">
-                      Open operatory slots for {bookingService}:
+                  <div className="p-3 bg-sky-50/70 border border-sky-100 rounded-2xl space-y-2 my-2 animate-fade-in">
+                    <p className="text-xs font-bold text-sky-900">
+                      Available Operatory slots synced with practice schedule:
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {["Today @ 3:15 PM", "Tomorrow @ 10:00 AM", "Friday @ 2:30 PM"].map((slot) => (
+                      {[
+                        "Tomorrow @ 10:00 AM",
+                        "Tomorrow @ 2:30 PM",
+                        "Friday @ 9:15 AM",
+                      ].map((slot) => (
                         <button
                           key={slot}
                           type="button"
                           onClick={() => handleSelectSlot(slot)}
-                          className="text-center text-xs p-2.5 rounded-lg bg-sky-50 hover:bg-sky-600 hover:text-white border border-sky-200 font-bold text-sky-800 transition-colors"
+                          className="p-2.5 rounded-xl bg-white hover:bg-cyan-50 border border-cyan-200 text-xs font-semibold text-slate-900 transition-all text-center flex items-center justify-center gap-1.5"
                         >
-                          {slot}
+                          <Clock className="w-3.5 h-3.5 text-cyan-600" />
+                          <span>{slot}</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Step: Patient Details Input */}
+                {/* Interactive Booking Option Step: Details */}
                 {bookingStep === "details" && (
-                  <div className="ml-10 bg-white p-4 rounded-2xl border border-sky-200 shadow-sm max-w-md animate-fade-in">
-                    <p className="text-xs font-bold text-slate-700 mb-2">
-                      Simulated patient info for {bookingSlot}:
-                    </p>
-                    <form onSubmit={handleFinalizeBooking} className="space-y-2.5">
+                  <form
+                    onSubmit={handleFinalizeBooking}
+                    className="p-4 bg-white border border-sky-200 rounded-2xl space-y-3 shadow-md animate-fade-in"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <span className="text-xs font-bold text-slate-900">
+                        Finalize Practice Reservation
+                      </span>
+                      <span className="text-[10px] text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded-full font-bold">
+                        {bookingSlot}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
                           Patient Name
                         </label>
                         <input
@@ -944,53 +1073,58 @@ function ReceptionistSimulatorInner() {
                           required
                           value={patientName}
                           onChange={(e) => setPatientName(e.target.value)}
-                          placeholder="e.g. Jessica Davis"
-                          className="w-full text-xs px-3 py-2 border border-sky-100 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          placeholder="Alex Morgan"
+                          className="w-full text-xs px-3 py-2 rounded-xl border border-sky-100 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-slate-50"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
-                          SMS Confirmation Cell
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Phone Number (for SMS Confirm)
                         </label>
                         <input
                           type="tel"
                           required
                           value={patientPhone}
                           onChange={(e) => setPatientPhone(e.target.value)}
-                          placeholder="(555) 019-2834"
-                          className="w-full text-xs px-3 py-2 border border-sky-100 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          placeholder="(512) 890-4421"
+                          className="w-full text-xs px-3 py-2 rounded-xl border border-sky-100 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-slate-50"
                         />
                       </div>
+                    </div>
+
+                    <div className="flex justify-end pt-1">
                       <button
                         type="submit"
-                        className="w-full gradient-dental-btn text-white text-xs font-bold py-2.5 rounded-lg shadow-sm"
+                        className="gradient-dental-btn text-white text-xs font-bold py-2.5 px-6 rounded-xl shadow-sm hover:scale-[1.02] transition-transform"
                       >
-                        Confirm Booking & Sync
+                        Confirm & Push to PMS Schedule
                       </button>
-                    </form>
-                  </div>
+                    </div>
+                  </form>
                 )}
 
                 {/* Typing Indicator */}
                 {isTyping && (
-                  <div className="flex items-center gap-2 ml-10 text-xs text-slate-500 bg-sky-50/70 p-2.5 rounded-xl w-32 border border-sky-100">
-                    <span className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-bounce" />
-                    <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                    <span className="w-1.5 h-1.5 bg-sky-600 rounded-full animate-bounce [animation-delay:0.4s]" />
-                    <span className="ml-1 text-[11px] font-medium">Checking PMS...</span>
+                  <div className="flex items-center gap-2 text-slate-400 text-xs pl-9">
+                    <span className="flex gap-1 items-center">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-bounce" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-bounce [animation-delay:0.2s]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
+                    </span>
+                    <span>Sarah is formulating clinical response...</span>
                   </div>
                 )}
               </div>
 
               {/* Chat Input Bar */}
-              <div className="p-3 sm:p-4 border-t border-sky-100 bg-white/90">
+              <div className="p-3 sm:p-4 border-t border-sky-100 bg-white">
                 <form onSubmit={handleCustomSubmit} className="flex items-center gap-2">
                   <input
                     type="text"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Type a patient question (e.g. 'Do you take Delta Dental?')..."
-                    className="flex-1 text-xs sm:text-sm px-4 py-3 rounded-full border border-sky-100 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-slate-50"
+                    placeholder="Ask Sarah about dental procedures, insurance verification, or schedule openings..."
+                    className="flex-1 text-xs sm:text-sm px-4 py-3 rounded-full border border-sky-100 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-slate-50/70"
                   />
                   <button
                     type="submit"
@@ -1007,9 +1141,8 @@ function ReceptionistSimulatorInner() {
         )}
       </div>
 
-
       {/* ============================================================== */}
-      {/* REAL TELEPHONY / TWILIO INTEGRATION GUIDE MODAL                */}
+      {/* REAL TELEPHONY / CLINIC PHONE INTEGRATION GUIDE MODAL          */}
       {/* ============================================================== */}
       {showTelephonyGuide && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
@@ -1028,13 +1161,13 @@ function ReceptionistSimulatorInner() {
               </div>
               <div>
                 <h4 className="text-base font-bold text-slate-900">Real Phone Call Integration</h4>
-                <p className="text-xs text-slate-500">Connecting ElevenLabs to clinic phone lines</p>
+                <p className="text-xs text-slate-500">Connecting DentalDesk to your clinic phone lines</p>
               </div>
             </div>
 
             <div className="space-y-3.5 text-xs text-slate-600 leading-relaxed">
               <p>
-                DentalDesk utilizes ElevenLabs&apos; native <strong>Telephony Integration</strong> so patients dialing your real clinic number speak directly to the AI receptionist:
+                DentalDesk utilizes carrier-grade <strong>Telephony Integration</strong> so patients dialing your real clinic number speak directly to the AI receptionist:
               </p>
 
               <div className="space-y-2 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
@@ -1043,7 +1176,7 @@ function ReceptionistSimulatorInner() {
                     1
                   </span>
                   <div>
-                    <strong className="text-slate-900">Import Phone Number:</strong> In your ElevenLabs Dashboard &rarr; Conversational AI &rarr; Phone Numbers, link your Twilio account or clinic SIP trunk.
+                    <strong className="text-slate-900">Connect Inbound Number:</strong> In your DentalDesk Admin Console &rarr; Phone Lines, connect your VoIP lines, Twilio number, or clinic SIP trunk.
                   </div>
                 </div>
 
@@ -1052,7 +1185,7 @@ function ReceptionistSimulatorInner() {
                     2
                   </span>
                   <div>
-                    <strong className="text-slate-900">Assign DentalDesk Agent:</strong> Attach Sarah (the DentalDesk receptionist prompt & PMS tool hooks) to your inbound number.
+                    <strong className="text-slate-900">Assign Receptionist:</strong> Attach Sarah (your customized DentalDesk receptionist prompt & PMS schedule hooks) to your inbound phone line.
                   </div>
                 </div>
 

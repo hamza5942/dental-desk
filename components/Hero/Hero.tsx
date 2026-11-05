@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, CalendarCheck, ShieldCheck, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Sparkles, CalendarCheck, ArrowRight, CheckCircle2 } from "lucide-react";
 
 interface HeroProps {
   onOpenDemo: () => void;

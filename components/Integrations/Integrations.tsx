@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, ShieldCheck, RefreshCw, Zap } from "lucide-react";
+import { ShieldCheck, RefreshCw, Zap } from "lucide-react";
 
 export default function Integrations() {
   const pmsList = [

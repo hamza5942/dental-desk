@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Play, Pause, Volume2, VolumeX, Sparkles, CheckCircle2, Film, ShieldAlert } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, CheckCircle2, Film } from "lucide-react";
 
 export default function VideoShowcase() {
   const [activeVideo, setActiveVideo] = useState<1 | 2>(1);
