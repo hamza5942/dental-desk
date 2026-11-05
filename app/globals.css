@@ -2,25 +2,91 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a;
+  --dental-primary: #1A73E8;
+  --dental-teal: #00B4D8;
+  --navy-deep: #051626;
+  --navy: #082842;
+  --sky: #7dd3fc;
+  --line: #e2e8f0;
+  --line-dark: rgba(255, 255, 255, 0.12);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@theme {
+  --color-dental-blue: #1A73E8;
+  --color-dental-teal: #00B4D8;
+  --color-dental-dark: #051626;
+  --color-dental-slate: #1e293b;
+  --color-dental-ice: #f0f7ff;
+  --font-serif: var(--font-serif), "Cormorant Garamond", Georgia, Cambria, "Times New Roman", serif;
+  --font-sans: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #ffffff;
+  color: #0f172a;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  overflow-x: hidden;
+}
+
+.font-serif {
+  font-family: var(--font-serif), "Cormorant Garamond", Georgia, serif;
+}
+
+/* Kotton Bridge Style Headings & Typography */
+h1, h2, h3 {
+  letter-spacing: -0.025em;
+}
+
+/* Glassmorphism Styles matching the logo palette */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 20px 40px -15px rgba(26, 115, 232, 0.06), 0 0 0 1px rgba(0, 180, 216, 0.1);
+}
+
+.glass-panel-dark {
+  background: rgba(5, 22, 38, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.5);
+}
+
+.gradient-dental-text {
+  background: linear-gradient(135deg, #38bdf8 0%, #00B4D8 50%, #1A73E8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-dental-btn {
+  background: linear-gradient(135deg, #1A73E8 0%, #00B4D8 100%);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gradient-dental-btn:hover {
+  background: linear-gradient(135deg, #1557b0 0%, #0096c7 100%);
+  box-shadow: 0 10px 25px -5px rgba(0, 180, 216, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Custom scrollbar for chat widget */
+.chat-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.chat-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #00B4D8;
 }
