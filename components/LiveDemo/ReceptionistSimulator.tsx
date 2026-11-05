@@ -20,7 +20,6 @@ import {
   ChevronRight,
   Headphones,
   MessageSquare,
-  Settings,
   X,
   PhoneForwarded,
   Info,
@@ -57,10 +56,11 @@ function ReceptionistSimulatorInner() {
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "es">("en");
   
   // ElevenLabs Live Conversational Agent State
-  const [elevenLabsAgentId, setElevenLabsAgentId] = useState<string>("");
+  const [elevenLabsAgentId, setElevenLabsAgentId] = useState<string>(
+    process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID || ""
+  );
   const [elevenLabsActive, setElevenLabsActive] = useState(false);
   const [elevenLabsError, setElevenLabsError] = useState<string | null>(null);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showTelephonyGuide, setShowTelephonyGuide] = useState(false);
 
   // Appointment Flow State
@@ -73,14 +73,16 @@ function ReceptionistSimulatorInner() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load ElevenLabs agent ID from localStorage or env
+  // Sync configured agent ID from backend if not bundled into client
   useEffect(() => {
-    const saved = localStorage.getItem("elevenlabs_agent_id");
-    if (saved) {
-      setElevenLabsAgentId(saved);
-    } else if (process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID) {
-      setElevenLabsAgentId(process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID);
-    }
+    fetch("/api/elevenlabs/signed-url")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.agentId) {
+          setElevenLabsAgentId(data.agentId);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // ElevenLabs SDK Hook
@@ -181,19 +183,23 @@ function ReceptionistSimulatorInner() {
       const res = await fetch("/api/elevenlabs/signed-url");
       const data = await res.json();
 
-      if (data.configured && data.signedUrl) {
+      if (data?.signedUrl) {
         await conversation.startSession({ signedUrl: data.signedUrl });
         return;
       }
 
-      // If backend has no key, check local agentId
-      if (elevenLabsAgentId) {
-        await conversation.startSession({ agentId: elevenLabsAgentId });
+      // Connect directly with the configured public Agent ID from .env.local
+      const targetAgentId =
+        data?.agentId ||
+        elevenLabsAgentId ||
+        process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+
+      if (targetAgentId) {
+        await conversation.startSession({ agentId: targetAgentId });
         return;
       }
 
-      // Fallback: prompt for Agent ID or start high-fidelity simulated call
-      setShowSettingsModal(true);
+      throw new Error("ElevenLabs Agent ID is not configured in .env.local");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to connect to ElevenLabs";
       setElevenLabsError(msg);
@@ -508,14 +514,6 @@ function ReceptionistSimulatorInner() {
                 >
                   <PhoneForwarded className="w-3 h-3" />
                   <span>Real Phone Setup</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSettingsModal(true)}
-                  className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                  title="ElevenLabs Agent Settings"
-                >
-                  <Settings className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1009,78 +1007,6 @@ function ReceptionistSimulatorInner() {
         )}
       </div>
 
-      {/* ============================================================== */}
-      {/* ELEVENLABS AGENT ID SETTINGS MODAL                             */}
-      {/* ============================================================== */}
-      {showSettingsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl border border-sky-100 p-6 sm:p-8 max-w-md w-full relative">
-            <button
-              type="button"
-              onClick={() => setShowSettingsModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl gradient-dental-btn flex items-center justify-center text-white">
-                <Settings className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-base font-bold text-slate-900">ElevenLabs Agent Settings</h4>
-                <p className="text-xs text-slate-500">Connect your custom ElevenLabs agent</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              Enter your public <strong>Agent ID</strong> from your ElevenLabs dashboard (under Conversational AI &rarr; Agents) to test your voice agent directly in the browser:
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  ElevenLabs Agent ID
-                </label>
-                <input
-                  type="text"
-                  value={elevenLabsAgentId}
-                  onChange={(e) => setElevenLabsAgentId(e.target.value)}
-                  placeholder="e.g. 21m00Tcm4TlvDq8ikWAM"
-                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-mono"
-                />
-              </div>
-
-              <div className="pt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    localStorage.setItem("elevenlabs_agent_id", elevenLabsAgentId);
-                    setShowSettingsModal(false);
-                  }}
-                  className="flex-1 gradient-dental-btn text-white text-xs font-bold py-2.5 rounded-xl shadow-sm"
-                >
-                  Save & Connect Agent
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSettingsModal(false);
-                    startSimulatedCall("emergency");
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
-                >
-                  Use Demo Call
-                </button>
-              </div>
-
-              <p className="text-[10px] text-slate-400 text-center pt-1">
-                Tip: You can also set ELEVENLABS_API_KEY and NEXT_PUBLIC_ELEVENLABS_AGENT_ID in .env.local
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ============================================================== */}
       {/* REAL TELEPHONY / TWILIO INTEGRATION GUIDE MODAL                */}
